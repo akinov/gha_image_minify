@@ -114,7 +114,6 @@ jobs:
               echo "最適化された画像を追加してPRを更新してください。"
             } > comment.md
             
-            exit 1
           else
             echo "optimization_required=false" >> $GITHUB_OUTPUT
             echo "圧縮が必要な画像は見つかりませんでした。"
@@ -134,4 +133,8 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               body: comment
-            }); 
+            });
+
+      - name: ワークフローの状態を設定
+        if: steps.compression-check.outputs.optimization_required == 'true'
+        run: exit 1 
