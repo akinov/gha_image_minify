@@ -53,6 +53,13 @@ jobs:
           OPTIMIZED_FILES=false
           mkdir -p optimized_images
 
+          # 変更の確認のため一覧表示
+          echo "changed_images.txtの内容:"
+          cat changed_images.txt
+
+          # 最適化が必要なファイルのリストを作成
+          > optimized_file_list.txt
+
           while IFS= read -r file; do
             if [[ -f "$file" ]]; then
               # 元のファイルサイズを取得
@@ -87,16 +94,28 @@ jobs:
                 echo "| $file | $ORIGINAL_SIZE_HUMAN | $COMPRESSED_SIZE_HUMAN | $REDUCTION_ROUNDED% |" >> report.md
                 FOUND_ISSUE=true
                 OPTIMIZED_FILES=true
+
                 # 圧縮したファイルをオリジナルの場所に保存
                 mkdir -p $(dirname "$file")
                 echo "圧縮ファイルをコピー: optimized_images/$(basename "$file") -> $file"
                 cp "optimized_images/$(basename "$file")" "$file"
+
+                # 最適化が必要なファイルをリストに追加
+                echo "$file" >> optimized_file_list.txt
               fi
 
               # 一時ファイルの削除
               rm -f "${file}.tmp"
             fi
           done < changed_images.txt
+
+          # 最適化が必要なファイルリストの確認
+          echo "最適化が必要なファイルリスト(optimized_file_list.txt):"
+          if [ -s optimized_file_list.txt ]; then
+            cat optimized_file_list.txt
+          else
+            echo "最適化が必要なファイルはありません"
+          fi
 
           if [ "$FOUND_ISSUE" = true ]; then
             echo "optimization_required=true" >> $GITHUB_OUTPUT
@@ -134,35 +153,44 @@ jobs:
           # 新しいブランチを作成
           git checkout -b $OPTIMIZE_BRANCH
 
-          # 変更をコミット（圧縮した画像ファイルのみを追加）
-          while IFS= read -r file; do
-            if [[ -f "$file" ]]; then
-              # 元のサイズを取得
-              ORIGINAL_SIZE=$(stat -c%s "$file")
+          # 重要：ワーキングディレクトリの内容を確認
+          echo "ワーキングディレクトリの内容:"
+          ls -la
 
-              # 対応する最適化ファイルのサイズを取得
-              if [[ -f "optimized_images/$(basename "$file")" ]]; then
-                COMPRESSED_SIZE=$(stat -c%s "optimized_images/$(basename "$file")")
+          # 最適化ファイルリストの確認
+          echo "最適化が必要なファイルリスト(optimized_file_list.txt):"
+          if [ -s optimized_file_list.txt ]; then
+            cat optimized_file_list.txt
 
-                # 削減率の計算 (%)
-                REDUCTION=$(awk "BEGIN {print 100 - ($COMPRESSED_SIZE / $ORIGINAL_SIZE * 100)}")
-
-                # 元のサイズの70%以下になる場合のみ追加
-                if (( $(echo "$REDUCTION > 30" | bc -l) )); then
-                  echo "最適化ファイルをgitに追加: $file (削減率: $REDUCTION%)"
-                  git add "$file"
-                fi
+            # 最適化されたファイルをGitに追加
+            while IFS= read -r file; do
+              if [[ -f "$file" ]]; then
+                echo "ファイルをGitに追加: $file"
+                git add "$file"
               else
-                echo "警告: $file に対応する最適化ファイルが見つかりません: optimized_images/$(basename "$file")"
+                echo "警告: ファイルが存在しません: $file"
               fi
-            else
-              echo "警告: ファイルが存在しません: $file"
-            fi
-          done < changed_images.txt
+            done < optimized_file_list.txt
+          else
+            echo "最適化が必要なファイルリストが空か存在しません"
+            # 代替として変更ファイルを直接追加
+            echo "代わりにchanged_images.txtを使用"
+            while IFS= read -r file; do
+              if [[ -f "$file" ]]; then
+                echo "ファイルを確認: $file"
+                git add "$file"
+              else
+                echo "警告: ファイルが存在しません: $file"
+              fi
+            done < changed_images.txt
+          fi
 
           # コミットするファイルがあるか確認
           echo "git diff --cached の結果を確認します："
           git diff --cached --name-only
+
+          echo "git status の結果を確認します："
+          git status
 
           if [ -n "$(git diff --cached --name-only)" ]; then
             echo "コミット対象のファイルが見つかりました。コミットを実行します。"
