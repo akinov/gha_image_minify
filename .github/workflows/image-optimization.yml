@@ -117,8 +117,11 @@ jobs:
           # 現在のブランチ名を取得
           CURRENT_BRANCH="${{ github.head_ref }}"
 
-          # 圧縮した画像をコミットするブランチ名を作成
-          OPTIMIZE_BRANCH="optimize-images-${CURRENT_BRANCH}"
+          # タイムスタンプを生成
+          TIMESTAMP=$(date +%Y%m%d%H%M%S)
+
+          # 圧縮した画像をコミットするブランチ名を作成（タイムスタンプを含む）
+          OPTIMIZE_BRANCH="${CURRENT_BRANCH}-optimize-image-${TIMESTAMP}"
 
           # Git設定
           git config --global user.name "GitHub Actions"
