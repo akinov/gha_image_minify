@@ -1,4 +1,4 @@
-# GitHub Action: 画像自動圧縮チェッカー
+# GitHub Action: 画像最適化ワークフロー
 
 ## 概要
 PRが作成された際に、差分に含まれる画像ファイル（JPEG、PNG）を検出し、圧縮可能かどうかを判定します。圧縮後のサイズが元のサイズの70%以下になる場合はCIをFailとし、適切な圧縮方法を通知します。
@@ -62,4 +62,4 @@ PNGファイルの場合:
 pngquant --quality=65-80 path/to/image.png --output path/to/image-compressed.png
 ```
 
-最適化された画像を追加してPRを更新してください。 
+最適化された画像を追加してPRを更新してください。

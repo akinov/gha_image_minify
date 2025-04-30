@@ -1,4 +1,4 @@
-# 画像自動圧縮チェッカー GitHub Action
+# 画像最適化ワークフロー GitHub Action
 
 PRで追加または変更された画像ファイル（JPEG、PNG）を自動的にチェックし、圧縮可能な場合は最適化された画像を含む新しいPRを自動で作成するGitHub Actionです。
 
@@ -13,10 +13,10 @@ PRで追加または変更された画像ファイル（JPEG、PNG）を自動�
 
 ## 使用方法
 
-リポジトリの`.github/workflows`ディレクトリに`image-optimization-checker.yml`ファイルを配置するだけで利用できます。
+リポジトリの`.github/workflows`ディレクトリに`image-optimization.yml`ファイルを配置するだけで利用できます。
 
 ```yml
-name: 画像圧縮チェッカー
+name: 画像最適化ワークフロー
 
 on:
   pull_request:
