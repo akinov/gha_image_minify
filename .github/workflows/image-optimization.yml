@@ -89,6 +89,7 @@ jobs:
                 OPTIMIZED_FILES=true
                 # 圧縮したファイルをオリジナルの場所に保存
                 mkdir -p $(dirname "$file")
+                echo "圧縮ファイルをコピー: optimized_images/$(basename "$file") -> $file"
                 cp "optimized_images/$(basename "$file")" "$file"
               fi
 
@@ -99,11 +100,14 @@ jobs:
 
           if [ "$FOUND_ISSUE" = true ]; then
             echo "optimization_required=true" >> $GITHUB_OUTPUT
+            echo "最適化が必要な画像が見つかりました。"
 
             if [ "$OPTIMIZED_FILES" = true ]; then
               echo "optimized_images=true" >> $GITHUB_OUTPUT
+              echo "最適化画像フラグを true に設定しました。"
             else
               echo "optimized_images=false" >> $GITHUB_OUTPUT
+              echo "最適化画像フラグを false に設定しました。"
             fi
           else
             echo "optimization_required=false" >> $GITHUB_OUTPUT
@@ -137,20 +141,31 @@ jobs:
               ORIGINAL_SIZE=$(stat -c%s "$file")
 
               # 対応する最適化ファイルのサイズを取得
-              COMPRESSED_SIZE=$(stat -c%s "optimized_images/$(basename "$file")")
+              if [[ -f "optimized_images/$(basename "$file")" ]]; then
+                COMPRESSED_SIZE=$(stat -c%s "optimized_images/$(basename "$file")")
 
-              # 削減率の計算 (%)
-              REDUCTION=$(awk "BEGIN {print 100 - ($COMPRESSED_SIZE / $ORIGINAL_SIZE * 100)}")
+                # 削減率の計算 (%)
+                REDUCTION=$(awk "BEGIN {print 100 - ($COMPRESSED_SIZE / $ORIGINAL_SIZE * 100)}")
 
-              # 元のサイズの70%以下になる場合のみ追加
-              if (( $(echo "$REDUCTION > 30" | bc -l) )); then
-                git add "$file"
+                # 元のサイズの70%以下になる場合のみ追加
+                if (( $(echo "$REDUCTION > 30" | bc -l) )); then
+                  echo "最適化ファイルをgitに追加: $file (削減率: $REDUCTION%)"
+                  git add "$file"
+                fi
+              else
+                echo "警告: $file に対応する最適化ファイルが見つかりません: optimized_images/$(basename "$file")"
               fi
+            else
+              echo "警告: ファイルが存在しません: $file"
             fi
           done < changed_images.txt
 
           # コミットするファイルがあるか確認
+          echo "git diff --cached の結果を確認します："
+          git diff --cached --name-only
+
           if [ -n "$(git diff --cached --name-only)" ]; then
+            echo "コミット対象のファイルが見つかりました。コミットを実行します。"
             git commit -m "🗜️ 画像を最適化（圧縮率70%以下）"
 
             # リモートにプッシュ
