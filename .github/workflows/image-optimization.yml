@@ -130,19 +130,41 @@ jobs:
           # 新しいブランチを作成
           git checkout -b $OPTIMIZE_BRANCH
 
-          # 変更をコミット
-          git add .
-          git commit -m "🗜️ 画像を最適化（圧縮率70%以下）"
+          # 変更をコミット（圧縮した画像ファイルのみを追加）
+          while IFS= read -r file; do
+            if [[ -f "$file" ]]; then
+              # 元のサイズを取得
+              ORIGINAL_SIZE=$(stat -c%s "$file")
 
-          # リモートにプッシュ
-          git push origin $OPTIMIZE_BRANCH
+              # 対応する最適化ファイルのサイズを取得
+              COMPRESSED_SIZE=$(stat -c%s "optimized_images/$(basename "$file")")
 
-          # PR作成
-          PR_URL=$(gh pr create --base $CURRENT_BRANCH --head $OPTIMIZE_BRANCH --title "🗜️ 画像の最適化（圧縮率70%以下）" --body "このPRは自動的に作成されました。圧縮率が70%以下になる画像が検出されたため、最適化された画像に置き換えています。")
+              # 削減率の計算 (%)
+              REDUCTION=$(awk "BEGIN {print 100 - ($COMPRESSED_SIZE / $ORIGINAL_SIZE * 100)}")
 
-          # PR_URLをファイルに保存してステップ間で共有
-          echo "$PR_URL" > pr_url.txt
-          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+              # 元のサイズの70%以下になる場合のみ追加
+              if (( $(echo "$REDUCTION > 30" | bc -l) )); then
+                git add "$file"
+              fi
+            fi
+          done < changed_images.txt
+
+          # コミットするファイルがあるか確認
+          if [ -n "$(git diff --cached --name-only)" ]; then
+            git commit -m "🗜️ 画像を最適化（圧縮率70%以下）"
+
+            # リモートにプッシュ
+            git push origin $OPTIMIZE_BRANCH
+
+            # PR作成
+            PR_URL=$(gh pr create --base $CURRENT_BRANCH --head $OPTIMIZE_BRANCH --title "🗜️ 画像の最適化（圧縮率70%以下）" --body "このPRは自動的に作成されました。圧縮率が70%以下になる画像が検出されたため、最適化された画像に置き換えています。")
+
+            # PR_URLをファイルに保存してステップ間で共有
+            echo "$PR_URL" > pr_url.txt
+            echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+          else
+            echo "コミットすべき最適化画像が見つかりませんでした。"
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
