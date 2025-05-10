@@ -1,0 +1,62 @@
+name: Copilot Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  call-model:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call AI model
+        id: model-call
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROMPT: "今日の運勢を教えて！"
+        run: |
+          # API呼び出しと生のレスポンスの保存
+          RAW_RESPONSE=$(curl "https://models.github.ai/inference/chat/completions" \
+             -H "Content-Type: application/json" \
+             -H "Authorization: Bearer $GITHUB_TOKEN" \
+             -d '{
+              "messages": [
+                  {
+                     "role": "user",
+                     "content": "'"$PROMPT"'"
+                  }
+               ],
+               "model": "openai/gpt-4o"
+            }')
+
+          # 生のレスポンスを一時ファイルに保存
+          echo "$RAW_RESPONSE" > raw_response.json
+
+          # レスポンスからコンテンツ部分を抽出
+          CONTENT=$(echo "$RAW_RESPONSE" | jq -r '.choices[0].message.content')
+
+          # 整形したレスポンスを一時ファイルに保存
+          echo "$CONTENT" > model_response.txt
+
+          # GitHub Actionsのoutputとして設定
+          echo "response<<EOF" >> $GITHUB_OUTPUT
+          echo "$CONTENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          echo "raw_response<<EOF" >> $GITHUB_OUTPUT
+          echo "$RAW_RESPONSE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Output response as log
+        run: |
+          echo "=========================================="
+          echo "GitHub Modelsからのレスポンス:"
+          echo "=========================================="
+          echo "${{ steps.model-call.outputs.response }}"
+          echo "=========================================="
+
+          echo ""
+          echo "=========================================="
+          echo "GitHub Modelsからの生のJSON レスポンス:"
+          echo "=========================================="
+          echo "${{ steps.model-call.outputs.raw_response }}"
+          echo "=========================================="
