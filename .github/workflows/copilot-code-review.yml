@@ -1,0 +1,35 @@
+name: Copilot Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  copilot-code-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Copilot for PRs
+        uses: github/copilot-for-pull-requests@v0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          file_glob_pattern: '**/*.{js,ts,jsx,tsx,md,yml,yaml,json,css,scss,html}'
+          prompt: |
+            あなたは画像最適化プロジェクトの専門レビュアーです。
+            以下の変更点をレビューし、以下の点に注目してください：
+            
+            1. コードの品質と可読性
+            2. 画像最適化処理の効率性
+            3. バグや潜在的な問題点
+            4. セキュリティの問題
+            5. パフォーマンスの改善点
+            
+            特に画像処理とGitHubワークフローに関する変更については詳細にレビューしてください。
+            具体的な改善提案を日本語で提供してください。
