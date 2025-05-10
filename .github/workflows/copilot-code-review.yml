@@ -5,31 +5,58 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
-  copilot-code-review:
+  call-model:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          
-      - name: Copilot for PRs
-        uses: github/copilot-for-pull-requests@v0
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          file_glob_pattern: '**/*.{js,ts,jsx,tsx,md,yml,yaml,json,css,scss,html}'
-          prompt: |
-            あなたは画像最適化プロジェクトの専門レビュアーです。
-            以下の変更点をレビューし、以下の点に注目してください：
-            
-            1. コードの品質と可読性
-            2. 画像最適化処理の効率性
-            3. バグや潜在的な問題点
-            4. セキュリティの問題
-            5. パフォーマンスの改善点
-            
-            特に画像処理とGitHubワークフローに関する変更については詳細にレビューしてください。
-            具体的な改善提案を日本語で提供してください。
+      - name: Call AI model
+        id: model-call
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROMPT: "今日の運勢を教えて！"
+        run: |
+          # API呼び出しと生のレスポンスの保存
+          RAW_RESPONSE=$(curl "https://models.github.ai/inference/chat/completions" \
+             -H "Content-Type: application/json" \
+             -H "Authorization: Bearer $GITHUB_TOKEN" \
+             -d '{
+              "messages": [
+                  {
+                     "role": "user",
+                     "content": "'"$PROMPT"'"
+                  }
+               ],
+               "model": "openai/gpt-4o"
+            }')
+
+          # 生のレスポンスを一時ファイルに保存
+          echo "$RAW_RESPONSE" > raw_response.json
+
+          # レスポンスからコンテンツ部分を抽出
+          CONTENT=$(echo "$RAW_RESPONSE" | jq -r '.choices[0].message.content')
+
+          # 整形したレスポンスを一時ファイルに保存
+          echo "$CONTENT" > model_response.txt
+
+          # GitHub Actionsのoutputとして設定
+          echo "response<<EOF" >> $GITHUB_OUTPUT
+          echo "$CONTENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          echo "raw_response<<EOF" >> $GITHUB_OUTPUT
+          echo "$RAW_RESPONSE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Output response as log
+        run: |
+          echo "=========================================="
+          echo "GitHub Modelsからのレスポンス:"
+          echo "=========================================="
+          echo "${{ steps.model-call.outputs.response }}"
+          echo "=========================================="
+
+          echo ""
+          echo "=========================================="
+          echo "GitHub Modelsからの生のJSON レスポンス:"
+          echo "=========================================="
+          echo "${{ steps.model-call.outputs.raw_response }}"
+          echo "=========================================="
