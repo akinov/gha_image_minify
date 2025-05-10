@@ -1,0 +1,248 @@
+name: 画像最適化ワークフロー
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  image-optimization:
+    name: 画像の最適化チェック
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: リポジトリのチェックアウト
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # すべての履歴を取得して差分の確認に使用
+
+      - name: 必要なツールのインストール
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jpegoptim pngquant
+
+      - name: PRで変更された画像ファイルの取得
+        id: changed-files
+        run: |
+          # PRの差分から画像ファイルのリストを作成
+          BASE_SHA=${{ github.event.pull_request.base.sha }}
+          HEAD_SHA=${{ github.event.pull_request.head.sha }}
+
+          CHANGED_IMAGES=$(git diff --name-only $BASE_SHA $HEAD_SHA | grep -E '\.jpe?g$|\.png$' || true)
+
+          if [ -z "$CHANGED_IMAGES" ]; then
+            echo "変更された画像ファイルはありません。"
+            echo "has_images=false" >> $GITHUB_OUTPUT
+          else
+            echo "変更された画像ファイル: $CHANGED_IMAGES"
+            echo "$CHANGED_IMAGES" > changed_images.txt
+            echo "has_images=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 画像圧縮チェック
+        if: steps.changed-files.outputs.has_images == 'true'
+        id: compression-check
+        run: |
+          echo "| ファイル | 現在のサイズ | 圧縮後のサイズ | 削減率 |" > report.md
+          echo "|---------|------------|--------------|-------|" >> report.md
+
+          FOUND_ISSUE=false
+          OPTIMIZED_FILES=false
+          mkdir -p optimized_images
+
+          # 変更の確認のため一覧表示
+          echo "changed_images.txtの内容:"
+          cat changed_images.txt
+
+          # 最適化が必要なファイルのリストを作成
+          > optimized_file_list.txt
+
+          while IFS= read -r file; do
+            if [[ -f "$file" ]]; then
+              # 元のファイルサイズを取得
+              ORIGINAL_SIZE=$(stat -c%s "$file")
+              ORIGINAL_SIZE_HUMAN=$(numfmt --to=iec --suffix=B $ORIGINAL_SIZE)
+
+              # ファイルタイプに基づいて圧縮を実行
+              if [[ "$file" =~ \.jpe?g$ ]]; then
+                # JPEGファイルの圧縮
+                cp "$file" "${file}.tmp"
+                jpegoptim --max=80 --strip-all "${file}.tmp" --stdout > "optimized_images/$(basename "$file")"
+                COMPRESSED_SIZE=$(stat -c%s "optimized_images/$(basename "$file")")
+              elif [[ "$file" =~ \.png$ ]]; then
+                # PNGファイルの圧縮
+                pngquant --quality=65-80 "$file" --output "optimized_images/$(basename "$file")" --force
+                COMPRESSED_SIZE=$(stat -c%s "optimized_images/$(basename "$file")")
+              fi
+
+              COMPRESSED_SIZE_HUMAN=$(numfmt --to=iec --suffix=B $COMPRESSED_SIZE)
+
+              # 削減率の計算 (%)
+              REDUCTION=$(awk "BEGIN {print 100 - ($COMPRESSED_SIZE / $ORIGINAL_SIZE * 100)}")
+              REDUCTION_ROUNDED=$(printf "%.1f" $REDUCTION)
+
+              echo "ファイル: $file"
+              echo "元のサイズ: $ORIGINAL_SIZE_HUMAN"
+              echo "圧縮後のサイズ: $COMPRESSED_SIZE_HUMAN"
+              echo "削減率: $REDUCTION_ROUNDED%"
+
+              # 元のサイズの70%以下になる場合はフラグを立てる
+              if (( $(echo "$REDUCTION > 30" | bc -l) )); then
+                echo "| $file | $ORIGINAL_SIZE_HUMAN | $COMPRESSED_SIZE_HUMAN | $REDUCTION_ROUNDED% |" >> report.md
+                FOUND_ISSUE=true
+                OPTIMIZED_FILES=true
+
+                # 圧縮したファイルをオリジナルの場所に保存
+                mkdir -p $(dirname "$file")
+                echo "圧縮ファイルをコピー: optimized_images/$(basename "$file") -> $file"
+                cp "optimized_images/$(basename "$file")" "$file"
+
+                # 最適化が必要なファイルをリストに追加
+                echo "$file" >> optimized_file_list.txt
+              fi
+
+              # 一時ファイルの削除
+              rm -f "${file}.tmp"
+            fi
+          done < changed_images.txt
+
+          # 最適化が必要なファイルリストの確認
+          echo "最適化が必要なファイルリスト(optimized_file_list.txt):"
+          if [ -s optimized_file_list.txt ]; then
+            cat optimized_file_list.txt
+          else
+            echo "最適化が必要なファイルはありません"
+          fi
+
+          if [ "$FOUND_ISSUE" = true ]; then
+            echo "optimization_required=true" >> $GITHUB_OUTPUT
+            echo "最適化が必要な画像が見つかりました。"
+
+            if [ "$OPTIMIZED_FILES" = true ]; then
+              echo "optimized_images=true" >> $GITHUB_OUTPUT
+              echo "最適化画像フラグを true に設定しました。"
+            else
+              echo "optimized_images=false" >> $GITHUB_OUTPUT
+              echo "最適化画像フラグを false に設定しました。"
+            fi
+          else
+            echo "optimization_required=false" >> $GITHUB_OUTPUT
+            echo "圧縮が必要な画像は見つかりませんでした。"
+          fi
+
+      - name: 最適化した画像のプッシュとPR作成
+        if: steps.compression-check.outputs.optimized_images == 'true'
+        id: create-pr
+        run: |
+          # 現在のブランチ名を取得
+          CURRENT_BRANCH="${{ github.head_ref }}"
+
+          # タイムスタンプを生成
+          TIMESTAMP=$(date +%Y%m%d%H%M%S)
+
+          # 圧縮した画像をコミットするブランチ名を作成（タイムスタンプを含む）
+          OPTIMIZE_BRANCH="${CURRENT_BRANCH}-optimize-image-${TIMESTAMP}"
+
+          # Git設定
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+          # 新しいブランチを作成
+          git checkout -b $OPTIMIZE_BRANCH
+
+          # 重要：ワーキングディレクトリの内容を確認
+          echo "ワーキングディレクトリの内容:"
+          ls -la
+
+          # 最適化ファイルリストの確認
+          echo "最適化が必要なファイルリスト(optimized_file_list.txt):"
+          if [ -s optimized_file_list.txt ]; then
+            cat optimized_file_list.txt
+
+            # 最適化されたファイルをGitに追加
+            while IFS= read -r file; do
+              if [[ -f "$file" ]]; then
+                echo "ファイルをGitに追加: $file"
+                git add "$file"
+              else
+                echo "警告: ファイルが存在しません: $file"
+              fi
+            done < optimized_file_list.txt
+          else
+            echo "最適化が必要なファイルリストが空か存在しません"
+            # 代替として変更ファイルを直接追加
+            echo "代わりにchanged_images.txtを使用"
+            while IFS= read -r file; do
+              if [[ -f "$file" ]]; then
+                echo "ファイルを確認: $file"
+                git add "$file"
+              else
+                echo "警告: ファイルが存在しません: $file"
+              fi
+            done < changed_images.txt
+          fi
+
+          # コミットするファイルがあるか確認
+          echo "git diff --cached の結果を確認します："
+          git diff --cached --name-only
+
+          echo "git status の結果を確認します："
+          git status
+
+          if [ -n "$(git diff --cached --name-only)" ]; then
+            echo "コミット対象のファイルが見つかりました。コミットを実行します。"
+            git commit -m "🗜️ 画像を最適化（圧縮率70%以下）"
+
+            # リモートにプッシュ
+            git push origin $OPTIMIZE_BRANCH
+
+            # PR作成
+            PR_URL=$(gh pr create --base $CURRENT_BRANCH --head $OPTIMIZE_BRANCH --title "🗜️ 画像の最適化（圧縮率70%以下）" --body "このPRは自動的に作成されました。圧縮率が70%以下になる画像が検出されたため、最適化された画像に置き換えています。")
+
+            # PR_URLをファイルに保存してステップ間で共有
+            echo "$PR_URL" > pr_url.txt
+            echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+          else
+            echo "コミットすべき最適化画像が見つかりませんでした。"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: PRにコメントを追加
+        if: steps.compression-check.outputs.optimization_required == 'true'
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('report.md', 'utf8');
+
+            let body = `## 画像圧縮の最適化が必要です 🖼️\n\n`;
+            body += `以下の画像ファイルは、圧縮によって大幅にサイズを削減できます:\n\n`;
+            body += `${report}\n\n`;
+
+            if ('${{ steps.create-pr.outputs.pr_url }}') {
+              body += `### 最適化された画像のPR\n\n`;
+              body += `最適化された画像を含むPRが自動的に作成されました:\n`;
+              body += `🔗 [${{ steps.create-pr.outputs.pr_url }}](${{ steps.create-pr.outputs.pr_url }})\n\n`;
+              body += `このPRをマージすることで、最適化された画像に置き換えることができます。\n\n`;
+            } else {
+              body += `### ローカルで圧縮するには:\n\n`;
+              body += `JPEGファイルの場合:\n\`\`\`bash\njpegoptim --max=80 --strip-all path/to/image.jpg\n\`\`\`\n\n`;
+              body += `PNGファイルの場合:\n\`\`\`bash\npngquant --quality=65-80 path/to/image.png --output path/to/image-compressed.png\n\`\`\`\n\n`;
+              body += `最適化された画像を追加してPRを更新してください。\n`;
+            }
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+      - name: ワークフローの状態を設定
+        if: steps.compression-check.outputs.optimization_required == 'true'
+        run: exit 1
