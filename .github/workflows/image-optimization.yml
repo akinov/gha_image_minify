@@ -76,7 +76,7 @@ jobs:
           else
             echo "変更された画像ファイル: $CHANGED_IMAGES"
             echo "$CHANGED_IMAGES" > changed_images.txt
-            echo "has_images=false" >> $GITHUB_OUTPUT
+            echo "has_images=true" >> $GITHUB_OUTPUT
           fi
 
       - name: 画像圧縮チェック
@@ -271,5 +271,5 @@ jobs:
             });
 
       - name: ワークフローの状態を設定
-        if: steps.compression-check.outputs.skip != 'true'
+        if: steps.compression-check.outputs.optimized_images == 'true'
         run: exit 1
