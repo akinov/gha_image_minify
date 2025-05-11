@@ -25,21 +25,36 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            console.log('現在のPR番号:', context.issue.number);
+            console.log('現在のブランチ:', context.payload.pull_request.head.ref);
+            console.log('ベースブランチ:', context.payload.pull_request.base.ref);
+
             const { data: openPRs } = await github.rest.pulls.list({
               owner: context.repo.owner,
               repo: context.repo.repo,
               state: 'open',
-              base: context.payload.pull_request.base.ref
+              base: context.payload.pull_request.head.ref
+            });
+
+            console.log('オープンなPRの数:', openPRs.length);
+            console.log('PR一覧:');
+            openPRs.forEach(pr => {
+              console.log(`- PR #${pr.number}: ${pr.title} (head: ${pr.head.ref}, base: ${pr.base.ref})`);
             });
 
             const hasImageOptimizationPR = openPRs.some(pr =>
-              pr.title.includes('画像圧縮') && pr.number !== context.issue.number
+              pr.title.includes('画像圧縮') &&
+              pr.number !== context.issue.number
             );
 
+            console.log('画像圧縮PRの存在:', hasImageOptimizationPR);
+
             if (hasImageOptimizationPR) {
-              console.log('同じbaseブランチに画像圧縮用のPRが存在するため、チェックをスキップします。');
+              console.log('現在のブランチをベースにした画像圧縮用のPRが存在するため、チェックをスキップします。');
               process.exit(0);
             }
+
+            console.log('チェックを続行します。');
 
       - name: 必要なツールのインストール
         run: |
