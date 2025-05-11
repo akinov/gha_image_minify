@@ -2,6 +2,7 @@ name: 画像最適化ワークフロー
 
 env:
   IMAGE_OPTIMIZATION_TITLE: "画像の最適化"
+  GH_TOKEN: ${{ github.token }}
 
 on:
   pull_request:
