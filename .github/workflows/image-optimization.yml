@@ -24,47 +24,47 @@ jobs:
 
       - name: 画像圧縮PRのチェック
         id: check-pr
-        uses: actions/github-script@v6
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            console.log('現在のPR番号:', context.issue.number);
-            console.log('現在のブランチ:', context.payload.pull_request.head.ref);
-            console.log('ベースブランチ:', context.payload.pull_request.base.ref);
+        run: |
+          # 必要なツールのインストール
+          sudo apt-get update
+          sudo apt-get install -y jq
 
-            const { data: openPRs } = await github.rest.pulls.list({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              base: context.payload.pull_request.head.ref
-            });
+          # 現在のPR情報を取得
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          CURRENT_BRANCH="${{ github.head_ref }}"
+          BASE_BRANCH="${{ github.base_ref }}"
 
-            console.log('オープンなPRの数:', openPRs.length);
-            console.log('PR一覧:');
-            openPRs.forEach(pr => {
-              console.log(`- PR #${pr.number}: ${pr.title} (head: ${pr.head.ref}, base: ${pr.base.ref})`);
-            });
+          echo "現在のPR番号: $PR_NUMBER"
+          echo "現在のブランチ: $CURRENT_BRANCH"
+          echo "ベースブランチ: $BASE_BRANCH"
 
-            const hasImageOptimizationPR = openPRs.some(pr =>
-              pr.title.includes('${{ env.IMAGE_OPTIMIZATION_TITLE }}') &&
-              pr.number !== context.issue.number
-            );
+          # オープンなPRの一覧を取得
+          OPEN_PRS=$(gh pr list --base "$CURRENT_BRANCH" --json number,title,headRefName,baseRefName --jq '.[] | select(.number != '"$PR_NUMBER"')')
 
-            console.log('画像圧縮PRの存在:', hasImageOptimizationPR);
+          echo "オープンなPRの数: $(echo "$OPEN_PRS" | wc -l)"
+          echo "PR一覧:"
+          echo "$OPEN_PRS" | jq -r '"PR #\(.number): \(.title) (head: \(.headRefName), base: \(.baseRefName))"'
 
-            if (hasImageOptimizationPR) {
-              console.log('現在のブランチをベースにした画像圧縮用のPRが存在するため、チェックをスキップします。');
-              process.exit(0);
-            }
+          # 画像最適化PRの存在をチェック
+          if echo "$OPEN_PRS" | jq -r '.title' | grep -q "🗜️ ${{ env.IMAGE_OPTIMIZATION_TITLE }}"; then
+            echo "画像圧縮PRの存在: true"
+            echo "現在のブランチをベースにした画像圧縮用のPRが存在するため、チェックをスキップします。"
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
 
-            console.log('チェックを続行します。');
+          echo "画像圧縮PRの存在: false"
+          echo "チェックを続行します。"
+          echo "skip=false" >> $GITHUB_OUTPUT
 
       - name: 必要なツールのインストール
+        if: steps.check-pr.outputs.skip != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y jpegoptim pngquant
 
       - name: PRで変更された画像ファイルの取得
+        if: steps.check-pr.outputs.skip != 'true'
         id: changed-files
         run: |
           # PRの差分から画像ファイルのリストを作成
@@ -75,15 +75,15 @@ jobs:
 
           if [ -z "$CHANGED_IMAGES" ]; then
             echo "変更された画像ファイルはありません。"
-            echo "has_images=false" >> $GITHUB_OUTPUT
+            echo "skip=true" >> $GITHUB_OUTPUT
           else
             echo "変更された画像ファイル: $CHANGED_IMAGES"
             echo "$CHANGED_IMAGES" > changed_images.txt
-            echo "has_images=true" >> $GITHUB_OUTPUT
+            echo "skip=false" >> $GITHUB_OUTPUT
           fi
 
       - name: 画像圧縮チェック
-        if: steps.changed-files.outputs.has_images == 'true'
+        if: steps.changed-files.outputs.skip != 'true'
         id: compression-check
         run: |
           echo "| ファイル | 現在のサイズ | 圧縮後のサイズ | 削減率 |" > report.md
@@ -158,7 +158,7 @@ jobs:
           fi
 
           if [ "$FOUND_ISSUE" = true ]; then
-            echo "optimization_required=true" >> $GITHUB_OUTPUT
+            echo "skip=false" >> $GITHUB_OUTPUT
             echo "最適化が必要な画像が見つかりました。"
 
             if [ "$OPTIMIZED_FILES" = true ]; then
@@ -169,12 +169,12 @@ jobs:
               echo "最適化画像フラグを false に設定しました。"
             fi
           else
-            echo "optimization_required=false" >> $GITHUB_OUTPUT
+            echo "skip=true" >> $GITHUB_OUTPUT
             echo "圧縮が必要な画像は見つかりませんでした。"
           fi
 
       - name: 最適化した画像のプッシュとPR作成
-        if: steps.compression-check.outputs.optimized_images == 'true'
+        if: steps.compression-check.outputs.skip != 'true'
         id: create-pr
         run: |
           # 現在のブランチ名を取得
@@ -252,7 +252,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: PRにコメントを追加
-        if: steps.compression-check.outputs.optimization_required == 'true'
+        if: steps.compression-check.outputs.skip != 'true'
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -284,5 +284,5 @@ jobs:
             });
 
       - name: ワークフローの状態を設定
-        if: steps.compression-check.outputs.optimization_required == 'true'
+        if: steps.compression-check.outputs.skip != 'true'
         run: exit 1
