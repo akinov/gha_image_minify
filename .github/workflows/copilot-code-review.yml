@@ -5,16 +5,33 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
-  call-model:
+  code-review:
     runs-on: ubuntu-latest
     steps:
-      - name: Call AI model
-        id: model-call
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v41
+        with:
+          files: |
+            **/*.{js,ts,jsx,tsx,py,java,cpp,c,go,rs,php,rb,swift,kt}
+
+      - name: Call Copilot for code review
+        id: review
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PROMPT: "今日の運勢を教えて！"
         run: |
-          # API呼び出しと生のレスポンスの保存
+          # 変更されたファイルの内容を取得
+          CHANGED_FILES=$(echo "${{ steps.changed-files.outputs.all_changed_files }}" | tr '\n' ' ')
+          
+          # レビュープロンプトの作成
+          REVIEW_PROMPT="以下のコードの変更をレビューしてください。セキュリティ、パフォーマンス、ベストプラクティスの観点から分析し、改善点があれば指摘してください。\n\n変更されたファイル:\n$CHANGED_FILES"
+          
+          # API呼び出し
           RAW_RESPONSE=$(curl "https://models.github.ai/inference/chat/completions" \
              -H "Content-Type: application/json" \
              -H "Authorization: Bearer $GITHUB_TOKEN" \
@@ -22,41 +39,30 @@ jobs:
               "messages": [
                   {
                      "role": "user",
-                     "content": "'"$PROMPT"'"
+                     "content": "'"$REVIEW_PROMPT"'"
                   }
                ],
                "model": "openai/gpt-4o"
             }')
 
-          # 生のレスポンスを一時ファイルに保存
-          echo "$RAW_RESPONSE" > raw_response.json
-
           # レスポンスからコンテンツ部分を抽出
           CONTENT=$(echo "$RAW_RESPONSE" | jq -r '.choices[0].message.content')
 
-          # 整形したレスポンスを一時ファイルに保存
-          echo "$CONTENT" > model_response.txt
-
           # GitHub Actionsのoutputとして設定
-          echo "response<<EOF" >> $GITHUB_OUTPUT
+          echo "review<<EOF" >> $GITHUB_OUTPUT
           echo "$CONTENT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-          echo "raw_response<<EOF" >> $GITHUB_OUTPUT
-          echo "$RAW_RESPONSE" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Output response as log
-        run: |
-          echo "=========================================="
-          echo "GitHub Modelsからのレスポンス:"
-          echo "=========================================="
-          echo "${{ steps.model-call.outputs.response }}"
-          echo "=========================================="
-
-          echo ""
-          echo "=========================================="
-          echo "GitHub Modelsからの生のJSON レスポンス:"
-          echo "=========================================="
-          echo "${{ steps.model-call.outputs.raw_response }}"
-          echo "=========================================="
+      - name: Create review comment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const review = `${{ steps.review.outputs.review }}`;
+            await github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              body: review,
+              event: 'COMMENT'
+            });
