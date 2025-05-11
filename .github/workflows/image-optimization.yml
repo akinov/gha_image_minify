@@ -1,5 +1,8 @@
 name: 画像最適化ワークフロー
 
+env:
+  IMAGE_OPTIMIZATION_TITLE: "画像の最適化"
+
 on:
   pull_request:
     types: [opened, synchronize]
@@ -43,7 +46,7 @@ jobs:
             });
 
             const hasImageOptimizationPR = openPRs.some(pr =>
-              pr.title.includes('画像圧縮') &&
+              pr.title.includes('${{ env.IMAGE_OPTIMIZATION_TITLE }}') &&
               pr.number !== context.issue.number
             );
 
@@ -231,13 +234,13 @@ jobs:
 
           if [ -n "$(git diff --cached --name-only)" ]; then
             echo "コミット対象のファイルが見つかりました。コミットを実行します。"
-            git commit -m "🗜️ 画像を最適化（圧縮率70%以下）"
+            git commit -m "🗜️ ${{ env.IMAGE_OPTIMIZATION_TITLE }}（圧縮率70%以下）"
 
             # リモートにプッシュ
             git push origin $OPTIMIZE_BRANCH
 
             # PR作成
-            PR_URL=$(gh pr create --base $CURRENT_BRANCH --head $OPTIMIZE_BRANCH --title "🗜️ 画像の最適化（圧縮率70%以下）" --body "このPRは自動的に作成されました。圧縮率が70%以下になる画像が検出されたため、最適化された画像に置き換えています。")
+            PR_URL=$(gh pr create --base $CURRENT_BRANCH --head $OPTIMIZE_BRANCH --title "🗜️ ${{ env.IMAGE_OPTIMIZATION_TITLE }}（圧縮率70%以下）" --body "このPRは自動的に作成されました。圧縮率が70%以下になる画像が検出されたため、最適化された画像に置き換えています。")
 
             # PR_URLをファイルに保存してステップ間で共有
             echo "$PR_URL" > pr_url.txt
