@@ -1,3 +1,4 @@
+test
 # GitHub Action: 画像最適化ワークフロー
 
 ## 概要
