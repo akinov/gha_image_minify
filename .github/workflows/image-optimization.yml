@@ -49,23 +49,19 @@ jobs:
           # 画像最適化PRの存在をチェック
           if echo "$OPEN_PRS" | jq -r '.title' | grep -q "🗜️ ${{ env.IMAGE_OPTIMIZATION_TITLE }}"; then
             echo "画像圧縮PRの存在: true"
-            echo "現在のブランチをベースにした画像圧縮用のPRが存在するため、チェックをスキップします。"
-            echo "skip=true" >> $GITHUB_OUTPUT
-            exit 0
+            echo "現在のブランチをベースにした画像圧縮用のPRが存在するため、チェックをスキップし早期終了ます。"
+            exit 1
           fi
 
           echo "画像圧縮PRの存在: false"
           echo "チェックを続行します。"
-          echo "skip=false" >> $GITHUB_OUTPUT
 
       - name: 必要なツールのインストール
-        if: steps.check-pr.outputs.skip != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y jpegoptim pngquant
 
       - name: PRで変更された画像ファイルの取得
-        if: steps.check-pr.outputs.skip != 'true'
         id: changed-files
         run: |
           # PRの差分から画像ファイルのリストを作成
@@ -76,21 +72,20 @@ jobs:
 
           if [ -z "$CHANGED_IMAGES" ]; then
             echo "変更された画像ファイルはありません。"
-            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "has_images=false" >> $GITHUB_OUTPUT
           else
             echo "変更された画像ファイル: $CHANGED_IMAGES"
             echo "$CHANGED_IMAGES" > changed_images.txt
-            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "has_images=false" >> $GITHUB_OUTPUT
           fi
 
       - name: 画像圧縮チェック
-        if: steps.changed-files.outputs.skip != 'true'
+        if: steps.changed-files.outputs.has_images == 'true'
         id: compression-check
         run: |
           echo "| ファイル | 現在のサイズ | 圧縮後のサイズ | 削減率 |" > report.md
           echo "|---------|------------|--------------|-------|" >> report.md
 
-          FOUND_ISSUE=false
           OPTIMIZED_FILES=false
           mkdir -p optimized_images
 
@@ -133,7 +128,6 @@ jobs:
               # 元のサイズの70%以下になる場合はフラグを立てる
               if (( $(echo "$REDUCTION > 30" | bc -l) )); then
                 echo "| $file | $ORIGINAL_SIZE_HUMAN | $COMPRESSED_SIZE_HUMAN | $REDUCTION_ROUNDED% |" >> report.md
-                FOUND_ISSUE=true
                 OPTIMIZED_FILES=true
 
                 # 圧縮したファイルをオリジナルの場所に保存
@@ -158,24 +152,16 @@ jobs:
             echo "最適化が必要なファイルはありません"
           fi
 
-          if [ "$FOUND_ISSUE" = true ]; then
-            echo "skip=false" >> $GITHUB_OUTPUT
+          if [ "$OPTIMIZED_FILES" = true ]; then
+            echo "optimized_images=true" >> $GITHUB_OUTPUT
             echo "最適化が必要な画像が見つかりました。"
-
-            if [ "$OPTIMIZED_FILES" = true ]; then
-              echo "optimized_images=true" >> $GITHUB_OUTPUT
-              echo "最適化画像フラグを true に設定しました。"
-            else
-              echo "optimized_images=false" >> $GITHUB_OUTPUT
-              echo "最適化画像フラグを false に設定しました。"
-            fi
           else
-            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "optimized_images=false" >> $GITHUB_OUTPUT
             echo "圧縮が必要な画像は見つかりませんでした。"
           fi
 
       - name: 最適化した画像のプッシュとPR作成
-        if: steps.compression-check.outputs.skip != 'true'
+        if: steps.compression-check.outputs.optimized_images == 'true'
         id: create-pr
         run: |
           # 現在のブランチ名を取得
@@ -253,7 +239,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: PRにコメントを追加
-        if: steps.compression-check.outputs.skip != 'true'
+        if: steps.compression-check.outputs.optimized_images == 'true'
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
