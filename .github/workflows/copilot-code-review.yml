@@ -1,0 +1,111 @@
+name: Copilot Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# 権限設定を追加
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  code-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v41
+        with:
+          files: |
+            **/*.{js,ts,jsx,tsx,py,java,cpp,c,go,rs,php,rb,swift,kt}
+
+      - name: Call Copilot for code review
+        id: review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "=========================================="
+          echo "コードレビュープロセス開始"
+          echo "=========================================="
+          
+          # 変更されたファイルの内容を取得
+          CHANGED_FILES=$(echo "${{ steps.changed-files.outputs.all_changed_files }}" | tr '\n' ' ')
+          echo "変更されたファイル:"
+          echo "$CHANGED_FILES"
+          echo "------------------------------------------"
+          
+          # レビュープロンプトの作成
+          REVIEW_PROMPT="以下のコードの変更をレビューしてください。セキュリティ、パフォーマンス、ベストプラクティスの観点から分析し、改善点があれば指摘してください。\n\n変更されたファイル:\n$CHANGED_FILES"
+          echo "レビュープロンプト:"
+          echo "$REVIEW_PROMPT"
+          echo "------------------------------------------"
+          
+          echo "GitHub Copilot APIを呼び出し中..."
+          # API呼び出し
+          RAW_RESPONSE=$(curl -v "https://models.github.ai/inference/chat/completions" \
+             -H "Content-Type: application/json" \
+             -H "Authorization: Bearer $GITHUB_TOKEN" \
+             -d '{
+              "messages": [
+                  {
+                     "role": "user",
+                     "content": "'"$REVIEW_PROMPT"'"
+                  }
+               ],
+               "model": "openai/gpt-4o"
+            }')
+          
+          echo "APIレスポンス受信完了"
+          echo "生のレスポンス:"
+          echo "$RAW_RESPONSE"
+          echo "------------------------------------------"
+          
+          # レスポンスのステータスコードを確認
+          HTTP_STATUS=$(echo "$RAW_RESPONSE" | grep -oP 'HTTP/\d\.\d \d+')
+          echo "HTTPステータス: $HTTP_STATUS"
+          
+          # レスポンスからコンテンツ部分を抽出
+          CONTENT=$(echo "$RAW_RESPONSE" | jq -r '.choices[0].message.content')
+          echo "jqコマンドの終了コード: $?"
+          echo "抽出されたコンテンツ:"
+          echo "$CONTENT"
+          
+          if [ -z "$CONTENT" ] || [ "$CONTENT" = "null" ]; then
+            echo "エラー: コンテンツが空またはnullです"
+            echo "レスポンスの構造を確認:"
+            echo "$RAW_RESPONSE" | jq '.'
+            exit 1
+          fi
+          
+          echo "------------------------------------------"
+
+          # GitHub Actionsのoutputとして設定
+          echo "review<<EOF" >> $GITHUB_OUTPUT
+          echo "$CONTENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          echo "=========================================="
+          echo "コードレビュープロセス完了"
+          echo "=========================================="
+
+      - name: Create review comment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const review = `${{ steps.review.outputs.review }}`;
+            console.log('レビューコメントを作成中...');
+            await github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              body: review,
+              event: 'COMMENT'
+            });
+            console.log('レビューコメントの作成が完了しました');
