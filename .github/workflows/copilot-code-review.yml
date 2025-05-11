@@ -48,7 +48,7 @@ jobs:
           
           echo "GitHub Copilot APIを呼び出し中..."
           # API呼び出し
-          RAW_RESPONSE=$(curl "https://models.github.ai/inference/chat/completions" \
+          RAW_RESPONSE=$(curl -v "https://models.github.ai/inference/chat/completions" \
              -H "Content-Type: application/json" \
              -H "Authorization: Bearer $GITHUB_TOKEN" \
              -d '{
@@ -62,12 +62,27 @@ jobs:
             }')
           
           echo "APIレスポンス受信完了"
+          echo "生のレスポンス:"
+          echo "$RAW_RESPONSE"
           echo "------------------------------------------"
+          
+          # レスポンスのステータスコードを確認
+          HTTP_STATUS=$(echo "$RAW_RESPONSE" | grep -oP 'HTTP/\d\.\d \d+')
+          echo "HTTPステータス: $HTTP_STATUS"
           
           # レスポンスからコンテンツ部分を抽出
           CONTENT=$(echo "$RAW_RESPONSE" | jq -r '.choices[0].message.content')
-          echo "レビュー内容:"
+          echo "jqコマンドの終了コード: $?"
+          echo "抽出されたコンテンツ:"
           echo "$CONTENT"
+          
+          if [ -z "$CONTENT" ] || [ "$CONTENT" = "null" ]; then
+            echo "エラー: コンテンツが空またはnullです"
+            echo "レスポンスの構造を確認:"
+            echo "$RAW_RESPONSE" | jq '.'
+            exit 1
+          fi
+          
           echo "------------------------------------------"
 
           # GitHub Actionsのoutputとして設定
