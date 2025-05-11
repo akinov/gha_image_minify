@@ -19,6 +19,28 @@ jobs:
         with:
           fetch-depth: 0  # すべての履歴を取得して差分の確認に使用
 
+      - name: 画像圧縮PRのチェック
+        id: check-pr
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { data: openPRs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              base: context.payload.pull_request.base.ref
+            });
+
+            const hasImageOptimizationPR = openPRs.some(pr =>
+              pr.title.includes('画像圧縮') && pr.number !== context.issue.number
+            );
+
+            if (hasImageOptimizationPR) {
+              console.log('同じbaseブランチに画像圧縮用のPRが存在するため、チェックをスキップします。');
+              process.exit(0);
+            }
+
       - name: 必要なツールのインストール
         run: |
           sudo apt-get update
