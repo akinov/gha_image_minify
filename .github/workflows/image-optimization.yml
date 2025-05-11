@@ -1,5 +1,9 @@
 name: 画像最適化ワークフロー
 
+env:
+  IMAGE_OPTIMIZATION_TITLE: "画像の最適化"
+  GH_TOKEN: ${{ github.token }}
+
 on:
   pull_request:
     types: [opened, synchronize]
@@ -18,6 +22,39 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 0  # すべての履歴を取得して差分の確認に使用
+
+      - name: 画像圧縮PRのチェック
+        id: check-pr
+        run: |
+          # 必要なツールのインストール
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+          # 現在のPR情報を取得
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          CURRENT_BRANCH="${{ github.head_ref }}"
+          BASE_BRANCH="${{ github.base_ref }}"
+
+          echo "現在のPR番号: $PR_NUMBER"
+          echo "現在のブランチ: $CURRENT_BRANCH"
+          echo "ベースブランチ: $BASE_BRANCH"
+
+          # オープンなPRの一覧を取得
+          OPEN_PRS=$(gh pr list --base "$CURRENT_BRANCH" --json number,title,headRefName,baseRefName --jq '.[] | select(.number != '"$PR_NUMBER"')')
+
+          echo "オープンなPRの数: $(echo "$OPEN_PRS" | wc -l)"
+          echo "PR一覧:"
+          echo "$OPEN_PRS" | jq -r '"PR #\(.number): \(.title) (head: \(.headRefName), base: \(.baseRefName))"'
+
+          # 画像最適化PRの存在をチェック
+          if echo "$OPEN_PRS" | jq -r '.title' | grep -q "🗜️ ${{ env.IMAGE_OPTIMIZATION_TITLE }}"; then
+            echo "画像圧縮PRの存在: true"
+            echo "現在のブランチをベースにした画像圧縮用のPRが存在するため、チェックをスキップし早期終了ます。"
+            exit 1
+          fi
+
+          echo "画像圧縮PRの存在: false"
+          echo "チェックを続行します。"
 
       - name: 必要なツールのインストール
         run: |
@@ -39,7 +76,7 @@ jobs:
           else
             echo "変更された画像ファイル: $CHANGED_IMAGES"
             echo "$CHANGED_IMAGES" > changed_images.txt
-            echo "has_images=true" >> $GITHUB_OUTPUT
+            echo "has_images=false" >> $GITHUB_OUTPUT
           fi
 
       - name: 画像圧縮チェック
@@ -49,7 +86,6 @@ jobs:
           echo "| ファイル | 現在のサイズ | 圧縮後のサイズ | 削減率 |" > report.md
           echo "|---------|------------|--------------|-------|" >> report.md
 
-          FOUND_ISSUE=false
           OPTIMIZED_FILES=false
           mkdir -p optimized_images
 
@@ -92,7 +128,6 @@ jobs:
               # 元のサイズの70%以下になる場合はフラグを立てる
               if (( $(echo "$REDUCTION > 30" | bc -l) )); then
                 echo "| $file | $ORIGINAL_SIZE_HUMAN | $COMPRESSED_SIZE_HUMAN | $REDUCTION_ROUNDED% |" >> report.md
-                FOUND_ISSUE=true
                 OPTIMIZED_FILES=true
 
                 # 圧縮したファイルをオリジナルの場所に保存
@@ -117,19 +152,11 @@ jobs:
             echo "最適化が必要なファイルはありません"
           fi
 
-          if [ "$FOUND_ISSUE" = true ]; then
-            echo "optimization_required=true" >> $GITHUB_OUTPUT
+          if [ "$OPTIMIZED_FILES" = true ]; then
+            echo "optimized_images=true" >> $GITHUB_OUTPUT
             echo "最適化が必要な画像が見つかりました。"
-
-            if [ "$OPTIMIZED_FILES" = true ]; then
-              echo "optimized_images=true" >> $GITHUB_OUTPUT
-              echo "最適化画像フラグを true に設定しました。"
-            else
-              echo "optimized_images=false" >> $GITHUB_OUTPUT
-              echo "最適化画像フラグを false に設定しました。"
-            fi
           else
-            echo "optimization_required=false" >> $GITHUB_OUTPUT
+            echo "optimized_images=false" >> $GITHUB_OUTPUT
             echo "圧縮が必要な画像は見つかりませんでした。"
           fi
 
@@ -194,13 +221,13 @@ jobs:
 
           if [ -n "$(git diff --cached --name-only)" ]; then
             echo "コミット対象のファイルが見つかりました。コミットを実行します。"
-            git commit -m "🗜️ 画像を最適化（圧縮率70%以下）"
+            git commit -m "🗜️ ${{ env.IMAGE_OPTIMIZATION_TITLE }}（圧縮率70%以下）"
 
             # リモートにプッシュ
             git push origin $OPTIMIZE_BRANCH
 
             # PR作成
-            PR_URL=$(gh pr create --base $CURRENT_BRANCH --head $OPTIMIZE_BRANCH --title "🗜️ 画像の最適化（圧縮率70%以下）" --body "このPRは自動的に作成されました。圧縮率が70%以下になる画像が検出されたため、最適化された画像に置き換えています。")
+            PR_URL=$(gh pr create --base $CURRENT_BRANCH --head $OPTIMIZE_BRANCH --title "🗜️ ${{ env.IMAGE_OPTIMIZATION_TITLE }}（圧縮率70%以下）" --body "このPRは自動的に作成されました。圧縮率が70%以下になる画像が検出されたため、最適化された画像に置き換えています。")
 
             # PR_URLをファイルに保存してステップ間で共有
             echo "$PR_URL" > pr_url.txt
@@ -212,7 +239,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: PRにコメントを追加
-        if: steps.compression-check.outputs.optimization_required == 'true'
+        if: steps.compression-check.outputs.optimized_images == 'true'
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -244,5 +271,5 @@ jobs:
             });
 
       - name: ワークフローの状態を設定
-        if: steps.compression-check.outputs.optimization_required == 'true'
+        if: steps.compression-check.outputs.skip != 'true'
         run: exit 1
