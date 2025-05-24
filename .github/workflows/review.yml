@@ -71,7 +71,7 @@ jobs:
           
           echo "DEBUG: Reading diff content (first 8000 chars)..."
           DIFF_CONTENT=$(cat pr_diff.txt | head -c 8000)
-          echo "DEBUG: Diff content length: ${#DIFF_CONTENT} characters"
+          echo "DEBUG: Diff content length: $(echo -n "$DIFF_CONTENT" | wc -c) characters"
           
           {
             echo "diff<<EOF"
@@ -92,7 +92,7 @@ jobs:
           echo "=========================================="
           
           DIFF_CONTENT='${{ steps.get-diff.outputs.diff }}'
-          echo "DEBUG: Retrieved diff content length: ${#DIFF_CONTENT} characters"
+          echo "DEBUG: Retrieved diff content length: $(echo -n "$DIFF_CONTENT" | wc -c) characters"
           
           PROMPT_TEXT="${REVIEW_PROMPT}
           $DIFF_CONTENT"
@@ -128,7 +128,7 @@ jobs:
             exit 1
           fi
           
-          echo "DEBUG: Content extracted successfully, length: ${#CONTENT} characters"
+          echo "DEBUG: Content extracted successfully, length: $(echo -n "$CONTENT" | wc -c) characters"
           echo "$CONTENT" > review_response.txt
 
           {
