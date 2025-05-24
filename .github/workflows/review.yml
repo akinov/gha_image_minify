@@ -120,7 +120,7 @@ jobs:
                      \"content\": $PROMPT
                   }
                ],
-               \"model\": \"anthropic/claude-3.5-sonnet\"
+               \"model\": \"openai/gpt-4o\"
             }")
 
           echo "DEBUG: API response received"
