@@ -91,8 +91,3 @@ jobs:
           echo "DEBUG: Starting AI Code Review"
           echo "=========================================="
           
-          # GitHub Actionsの出力をファイル経由で安全に取得
-          echo '${{ steps.get-diff.outputs.diff }}' > diff_content.txt
-          echo "DEBUG: Diff content saved to file"
-          echo "DEBUG: Retrieved diff content length: $(wc -c < diff_content.txt) characters"
-          
