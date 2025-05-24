@@ -91,13 +91,15 @@ jobs:
           echo "=========================================="
           
           echo "DEBUG: Making API request to list models..."
-          MODELS_RESPONSE=$(curl -s " https://models.github.ai/catalog/models" \
+          MODELS_RESPONSE=$(curl -L "https://models.github.ai/catalog/models" \
              -H "Accept: application/vnd.github+json" \
              -H "Authorization: Bearer $GITHUB_TOKEN" \
              -H "X-GitHub-Api-Version: 2022-11-28")
           
           echo "DEBUG: Models API response received"
-
+          echo "DEBUG: Available models:"
+          echo "$MODELS_RESPONSE" | jq -r '.[] | "- \(.name): \(.display_name) (by \(.publisher.display_name // .publisher))"' || echo "Failed to parse models response"
+          
           echo "DEBUG: Raw models response:"
           echo "$MODELS_RESPONSE"
           echo "=========================================="
