@@ -91,3 +91,21 @@ jobs:
           echo "DEBUG: Starting AI Code Review"
           echo "=========================================="
           
+          # 前のステップで作成されたpr_diff.txtを直接使用（より安全）
+          if [ -f "pr_diff.txt" ]; then
+            echo "DEBUG: Using pr_diff.txt created in previous step"
+            echo "DEBUG: Retrieved diff content length: $(wc -c < pr_diff.txt) characters"
+          else
+            echo "ERROR: pr_diff.txt not found"
+            exit 1
+          fi
+
+          # プロンプトテキストを作成
+          echo "${REVIEW_PROMPT}" > prompt.txt
+          echo "" >> prompt.txt
+          cat pr_diff.txt >> prompt.txt
+          
+          echo "DEBUG: Creating JSON prompt..."
+          PROMPT=$(cat prompt.txt | jq -Rs .)
+          echo "DEBUG: JSON prompt created successfully"
+          
