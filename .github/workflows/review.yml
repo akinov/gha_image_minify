@@ -6,11 +6,27 @@ on:
 permissions:
   pull-requests: write
   contents: read
+  models: read
 
 jobs:
   code-review:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    env:
+      REVIEW_PROMPT: |
+        以下のPull Requestの差分をコードレビューしてください。
+
+        コードの品質、セキュリティ、パフォーマンス、ベストプラクティスに関して以下の観点で評価してください：
+
+        1. コードの品質・可読性
+        2. セキュリティ上の問題
+        3. パフォーマンスへの影響
+        4. バグの可能性
+        5. ベストプラクティスの遵守
+
+        改善提案がある場合は、具体的な修正方法も含めて説明してください。
+
+        以下がコードの差分です：
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -45,22 +61,10 @@ jobs:
         run: |
           DIFF_CONTENT="${{ steps.get-diff.outputs.diff }}"
           
-          echo "以下のPull Requestの差分をコードレビューしてください。
-
-          コードの品質、セキュリティ、パフォーマンス、ベストプラクティスに関して以下の観点で評価してください：
-
-          1. コードの品質・可読性
-          2. セキュリティ上の問題
-          3. パフォーマンスへの影響
-          4. バグの可能性
-          5. ベストプラクティスの遵守
-
-          改善提案がある場合は、具体的な修正方法も含めて説明してください。
-
-          以下がコードの差分です：
-          $DIFF_CONTENT" > prompt.txt
+          PROMPT_TEXT="${REVIEW_PROMPT}
+          $DIFF_CONTENT"
           
-          PROMPT=$(cat prompt.txt | jq -Rs .)
+          PROMPT=$(echo "$PROMPT_TEXT" | jq -Rs .)
 
           RAW_RESPONSE=$(curl -s "https://models.github.ai/inference/chat/completions" \
              -H "Content-Type: application/json" \
