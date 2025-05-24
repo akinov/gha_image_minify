@@ -49,9 +49,11 @@ jobs:
           echo "has_changes=true" >> $GITHUB_OUTPUT
           
           DIFF_CONTENT=$(cat pr_diff.txt | head -c 8000)
-          echo "diff<<EOF" >> $GITHUB_OUTPUT
-          echo "$DIFF_CONTENT" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          {
+            echo "diff<<EOF"
+            echo "$DIFF_CONTENT"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
 
       - name: AI Code Review
         id: code-review
@@ -59,7 +61,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          DIFF_CONTENT="${{ steps.get-diff.outputs.diff }}"
+          DIFF_CONTENT='${{ steps.get-diff.outputs.diff }}'
           
           PROMPT_TEXT="${REVIEW_PROMPT}
           $DIFF_CONTENT"
@@ -85,13 +87,17 @@ jobs:
 
           echo "$CONTENT" > review_response.txt
 
-          echo "review<<EOF" >> $GITHUB_OUTPUT
-          echo "$CONTENT" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          {
+            echo "review<<EOF"
+            echo "$CONTENT"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
 
-          echo "raw_response<<EOF" >> $GITHUB_OUTPUT
-          echo "$RAW_RESPONSE" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          {
+            echo "raw_response<<EOF"
+            echo "$RAW_RESPONSE"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
 
       - name: Comment on PR
         if: steps.get-diff.outputs.has_changes == 'true'
