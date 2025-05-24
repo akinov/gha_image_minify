@@ -96,12 +96,3 @@ jobs:
           echo "DEBUG: Diff content saved to file"
           echo "DEBUG: Retrieved diff content length: $(wc -c < diff_content.txt) characters"
           
-          # プロンプトテキストを作成
-          echo "${REVIEW_PROMPT}" > prompt.txt
-          echo "" >> prompt.txt
-          cat diff_content.txt >> prompt.txt
-          
-          echo "DEBUG: Creating JSON prompt..."
-          PROMPT=$(cat prompt.txt | jq -Rs .)
-          echo "DEBUG: JSON prompt created successfully"
-          
