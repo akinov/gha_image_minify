@@ -91,7 +91,7 @@ jobs:
           echo "=========================================="
           
           echo "DEBUG: Making API request to list models..."
-          MODELS_RESPONSE=$(curl -s "https://api.github.com/models" \
+          MODELS_RESPONSE=$(curl -s " https://models.github.ai/catalog/models" \
              -H "Accept: application/vnd.github+json" \
              -H "Authorization: Bearer $GITHUB_TOKEN" \
              -H "X-GitHub-Api-Version: 2022-11-28")
