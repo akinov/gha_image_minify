@@ -137,6 +137,7 @@ jobs:
           fi
           
           echo "DEBUG: Content extracted successfully, length: $(echo -n "$CONTENT" | wc -c) characters"
+          echo "$CONTENT"
           echo "$CONTENT" > review_response.txt
 
           {
