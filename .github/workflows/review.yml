@@ -122,7 +122,7 @@ jobs:
         if: steps.get-diff.outputs.has_changes == 'true'
         run: |
           echo "=========================================="
-          echo "Claude Sonnet 4からのコードレビュー:"
+          echo "AI Code Review by Claude Sonnet 4:"
           echo "=========================================="
           echo "${{ steps.code-review.outputs.review }}"
           echo "=========================================="
