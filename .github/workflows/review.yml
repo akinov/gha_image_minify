@@ -121,10 +121,7 @@ jobs:
           echo "DEBUG: Starting AI Code Review"
           echo "Using AI Model: $AI_MODEL"
           echo "=========================================="
-          
-          # 利用可能なモデルID一覧（前のステップで取得）
-          echo "DEBUG: Available model IDs: ${{ steps.list-models.outputs.model_ids }}"
-          
+                    
           # 前のステップで作成されたpr_diff.txtを直接使用（より安全）
           if [ -f "pr_diff.txt" ]; then
             echo "DEBUG: Using pr_diff.txt created in previous step"
