@@ -1,11 +1,4 @@
-name: Claude PR Action 
-
-permissions:
-  contents: write
-  pull-requests: write
-  issues: write
-  id-token: write 
-
+name: Claude Assistant
 on:
   issue_comment:
     types: [created]
@@ -13,26 +6,29 @@ on:
     types: [created]
   issues:
     types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
 
 jobs:
-  claude-pr:
+  claude-code-action:
     if: |
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
       (github.event_name == 'issues' && contains(github.event.issue.body, '@claude'))
     runs-on: ubuntu-latest
     env:
-      AWS_REGION: us-west-2
+      ANTHROPIC_BEDROCK_BASE_URL: "https://bedrock-runtime.us-west-2.amazonaws.com"
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      id-token: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Generate GitHub App token
-        id: app-token
-        uses: actions/create-github-app-token@v2
         with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          fetch-depth: 1
 
       - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -40,10 +36,7 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: us-west-2
 
-      - uses: ./.github/actions/claude-pr-action
+      - uses: anthropics/claude-code-action@beta
         with:
-          trigger_phrase: "@claude"
-          timeout_minutes: "60"
-          github_token: ${{ steps.app-token.outputs.token }}
+          model: "us.anthropic.claude-sonnet-4-20250514-v1:0"
           use_bedrock: "true"
-          anthropic_model: "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
