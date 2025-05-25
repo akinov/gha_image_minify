@@ -9,7 +9,7 @@ permissions:
   models: read
 
 env:
-  AI_MODEL: "gpt-4.1"
+  AI_MODEL: "openai/gpt-4.1"
   LIST_MODELS: "false"
 
 jobs:
